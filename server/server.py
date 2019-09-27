@@ -6,7 +6,7 @@ from sklearn.datasets import fetch_openml
 from sklearn.utils import check_random_state
 from sklearn.model_selection import train_test_split
 
-from .protocal import send, receive, boardcast
+from protocol.protocol_utils import server_send, server_receive, server_braodcast
 
 def read_data():
     # Get MNIST data, normalize, and divide by level
@@ -21,7 +21,7 @@ def read_data():
     return X_train_1, X_train_2, y_train_1, y_train_2
 
 
-def main():
+def assign_data():
     # load datasets for two pis
     X_train_1, X_train_2, y_train_1, y_train_2 = read_data()
     print('_'*30 + ' check the consistency ' + '_'*30)
@@ -32,11 +32,25 @@ def main():
     # send data to pis [X_train_1, y_train_1] is for pi1, [X_train_2, y_train_2] is for pi2
     # suggest compression of data before sending
     np.save('./data/X_train_1.npy', X_train_1)
-    
-    send([X_train_1, y_train_1], 'ip of pi1')
-    send([X_train_2, y_train_2], 'ip of pi2')
 
-    
+    server_send([X_train_1, y_train_1], 'ip of pi1')
+    server_send([X_train_2, y_train_2], 'ip of pi2')
+
+def receive_and_broadcast():
+    ''' 
+    receive uploads from workers and take the average of all uplaods,
+     and then broadcast the average to all workers
+    ''' 
+
+def main():
+
+    # assign datasets to workers
+    assign_data()
+
+    # continue the process for 100 iterations
+    for i in range(100):
+        receive_and_broadcast()  
+
 
 if __name__ == '__main__':
     main()
