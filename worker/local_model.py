@@ -1,59 +1,90 @@
 import tensorflow as tf
+import numpy as np
 
-# Import MINST data
+def batch_data(data, batch_size):
+    '''
+    data is a dict := {'x': [numpy array], 'y': [numpy array]} (on one client)
+    returns x, y, which are both numpy array of length: batch_size
+    '''
+    data_x = data['x'] ## modify
+    data_y = data['y']
 
+    # randomly shuffle data
+    np.random.seed(100)
+    rng_state = np.random.get_state()
+    np.random.shuffle(data_x)
+    np.random.set_state(rng_state)
+    np.random.shuffle(data_y)
 
-
-# Parameters
-learning_rate = 0.01
-training_epochs = 25
-batch_size = 100
-display_step = 1
-
-# tf Graph Input
-x = tf.placeholder(tf.float32, [None, 784]) # mnist data image of shape 28*28=784
-y = tf.placeholder(tf.float32, [None, 10]) # 0-9 digits recognition => 10 classes
-
-# Set model weights
-W = tf.Variable(tf.zeros([784, 10]))
-b = tf.Variable(tf.zeros([10]))
-
-# Construct model
-pred = tf.nn.softmax(tf.matmul(x, W) + b) # Softmax
-
-# Minimize error using cross entropy
-cost = tf.reduce_mean(-tf.reduce_sum(y*tf.log(pred), reduction_indices=1))
-# Gradient Descent
-optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-
-# Initialize the variables (i.e. assign their default value)
-init = tf.global_variables_initializer()
+    # loop through mini-batches
+    for i in range(0, len(data_x), batch_size):
+        batched_x = data_x[i:i+batch_size]
+        batched_y = data_y[i:i+batch_size]
+        yield (batched_x, batched_y)
 
 
-# Start training
-with tf.Session() as sess:
-    sess.run(init)
+def local_solver(model_params=None):
+    # load local dataset
+    train_X = 0
+    train_y = 0
+    test_x = 0
+    test_y = 0
+    data_train = []
 
-    # Training cycle
-    for epoch in range(training_epochs):
-        avg_cost = 0.
-        total_batch = int(mnist.train.num_examples/batch_size)
-        # Loop over all batches
-        for i in range(total_batch):
-            batch_xs, batch_ys = mnist.train.next_batch(batch_size)
-            # Fit training using batch data
-            _, c = sess.run([optimizer, cost], feed_dict={x: batch_xs,
-                                                          y: batch_ys})
-            # Compute average loss
-            avg_cost += c / total_batch
-        # Display logs per epoch step
-        if (epoch+1) % display_step == 0:
-            print("Epoch:", '%04d' % (epoch+1), "cost=", "{:.9f}".format(avg_cost))
 
-    print("Optimization Finished!")
+    # Parameters
+    learning_rate = 0.01
+    epochs = 25
+    batch_size = 10
+    display_step = 1
+    num_classes = 10
+    regu_param = 1e-3
 
-    # Test model
-    correct_prediction = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
-    # Calculate accuracy for 3000 examples
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    print("Accuracy:", accuracy.eval({x: mnist.test.images[:3000], y: mnist.test.labels[:3000]}))
+    # initialize graph
+    graph = tf.Graph()
+    with graph.as_default():
+        # tf Graph Input
+        X = tf.placeholder(tf.float32, [None, 784]) # mnist data image of shape 28*28=784
+        y = tf.placeholder(tf.float32, [None, 10]) # 0-9 digits recognition => 10 classes
+
+        logits = tf.layers.dense(inputs=X, units=num_classes, kernel_regularizer=tf.contrib.layers.l2_regularizer(regu_param))
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+
+        predictions = {
+                    "classes": tf.argmax(input=logits, axis=1),
+                    "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+                    }
+
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=y, logits=logits)
+        grads_and_vars = optimizer.compute_gradients(loss)
+        train_op = optimizer.apply_gradients(grads_and_vars, global_step=tf.train.get_global_step())
+
+        eval_metric_ops = tf.count_nonzero(tf.equal(y, predictions["classes"]))
+        saver = tf.train.Saver()
+    sess = tf.Session(graph=graph)
+    # initalization
+
+    if model_params is not None:
+        with graph.as_default():
+            all_vars = tf.trainable_variables()
+            for variable, value in zip(all_vars, model_params):
+                variable.load(value, sess)
+    
+    # train
+    for epoch in range(epochs):
+        for batch_X, batch_y in batch_data(data_train, batch_size):
+            with graph.as_default():
+                sess.run(train_op, feed_dict={X: batch_X, y: batch_y})
+    soln =  sess.run(tf.trainable_variables())
+    return soln
+
+def main():
+    # receive model_params from server
+    model_params = receive('ip of server')
+    
+    # calculate local model
+    local_model = local_solver(model_params)
+    # upload local model to server
+
+if __name__ == '__main__':
+    main()
