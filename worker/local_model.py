@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from protocol.protocol_utils import uplaod, receive
+from protocol.protocol_utils import worker_uplaod, worker_receive
 
 def batch_data(data, batch_size):
     '''
@@ -90,3 +90,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    
+
