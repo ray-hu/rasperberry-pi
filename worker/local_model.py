@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+from protocol.protocol_utils import uplaod, receive
 
 def batch_data(data, batch_size):
     '''
@@ -85,6 +86,7 @@ def main():
     # calculate local model
     local_model = local_solver(model_params)
     # upload local model to server
+    upload(local_model, 'ip of server')
 
 if __name__ == '__main__':
     main()
